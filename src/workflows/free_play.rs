@@ -7,7 +7,10 @@ use crate::model::{AuthCache, AuthConfig, CheckinResult};
 use crate::storage::upsert_account;
 use crate::ui;
 use crate::workflows::common::{AccountRewardSummary, print_account_reward_summary};
-use crate::workflows::{checkin, memory, puzzle_15, puzzle_2048, sheepmatch, sudoku};
+use crate::workflows::{
+    checkin, lightsout, maze, memory, minesweeper, nonogram, puzzle_15, puzzle_2048, sheepmatch,
+    sokoban, sudoku,
+};
 
 const FEATURE_RETRY_BACKOFF: Duration = Duration::ZERO;
 
@@ -45,6 +48,31 @@ pub(crate) type SudokuRunner = Arc<
         + Send
         + Sync,
 >;
+pub(crate) type SokobanRunner = Arc<
+    dyn Fn(&AuthConfig, AuthCache, &ui::CancelFlag) -> io::Result<sokoban::AccountRunOutput>
+        + Send
+        + Sync,
+>;
+pub(crate) type MinesweeperRunner = Arc<
+    dyn Fn(&AuthConfig, AuthCache, &ui::CancelFlag) -> io::Result<minesweeper::AccountRunOutput>
+        + Send
+        + Sync,
+>;
+pub(crate) type MazeRunner = Arc<
+    dyn Fn(&AuthConfig, AuthCache, &ui::CancelFlag) -> io::Result<maze::AccountRunOutput>
+        + Send
+        + Sync,
+>;
+pub(crate) type LightsoutRunner = Arc<
+    dyn Fn(&AuthConfig, AuthCache, &ui::CancelFlag) -> io::Result<lightsout::AccountRunOutput>
+        + Send
+        + Sync,
+>;
+pub(crate) type NonogramRunner = Arc<
+    dyn Fn(&AuthConfig, AuthCache, &ui::CancelFlag) -> io::Result<nonogram::AccountRunOutput>
+        + Send
+        + Sync,
+>;
 pub(crate) type SaveMergedConfig = Box<dyn Fn(AuthConfig) -> io::Result<()> + Send>;
 
 pub(crate) struct FreeFeatureRunners {
@@ -54,6 +82,11 @@ pub(crate) struct FreeFeatureRunners {
     pub(crate) run_memory: MemoryRunner,
     pub(crate) run_puzzle_15: Puzzle15Runner,
     pub(crate) run_sudoku: SudokuRunner,
+    pub(crate) run_sokoban: SokobanRunner,
+    pub(crate) run_minesweeper: MinesweeperRunner,
+    pub(crate) run_maze: MazeRunner,
+    pub(crate) run_lightsout: LightsoutRunner,
+    pub(crate) run_nonogram: NonogramRunner,
     pub(crate) save_merged_config: SaveMergedConfig,
 }
 
@@ -125,6 +158,11 @@ pub(crate) fn execute_all_free_features(
         Memory(memory::AccountRunOutput),
         Puzzle15(puzzle_15::AccountRunOutput),
         Sudoku(sudoku::AccountRunOutput),
+        Sokoban(sokoban::AccountRunOutput),
+        Minesweeper(minesweeper::AccountRunOutput),
+        Maze(maze::AccountRunOutput),
+        Lightsout(lightsout::AccountRunOutput),
+        Nonogram(nonogram::AccountRunOutput),
     }
 
     let FreeFeatureRunners {
@@ -134,6 +172,11 @@ pub(crate) fn execute_all_free_features(
         run_memory,
         run_puzzle_15,
         run_sudoku,
+        run_sokoban,
+        run_minesweeper,
+        run_maze,
+        run_lightsout,
+        run_nonogram,
         save_merged_config,
     } = runners;
     let (result_tx, result_rx) = mpsc::channel::<io::Result<AccountProgress>>();
@@ -160,6 +203,11 @@ pub(crate) fn execute_all_free_features(
         let run_memory = Arc::clone(&run_memory);
         let run_puzzle_15 = Arc::clone(&run_puzzle_15);
         let run_sudoku = Arc::clone(&run_sudoku);
+        let run_sokoban = Arc::clone(&run_sokoban);
+        let run_minesweeper = Arc::clone(&run_minesweeper);
+        let run_maze = Arc::clone(&run_maze);
+        let run_lightsout = Arc::clone(&run_lightsout);
+        let run_nonogram = Arc::clone(&run_nonogram);
         let result_tx = result_tx.clone();
         let log = log.clone();
         handles.push(std::thread::spawn(move || {
@@ -185,6 +233,34 @@ pub(crate) fn execute_all_free_features(
                             run_feature_with_status(&cancel_flag, &log, &email, "自动签到", || {
                                 run_checkin(&account_config, account.clone(), &cancel_flag)
                                     .map(FeatureProgress::Checkin)
+                            })
+                        }
+                    }),
+                    std::thread::spawn({
+                        let account_config = account_config.clone();
+                        let account = account.clone();
+                        let cancel_flag = Arc::clone(&cancel_flag);
+                        let run_sokoban = Arc::clone(&run_sokoban);
+                        let log = log.clone();
+                        let email = account_email.clone();
+                        move || {
+                            run_feature_with_status(&cancel_flag, &log, &email, "自动推箱子", || {
+                                run_sokoban(&account_config, account.clone(), &cancel_flag)
+                                    .map(FeatureProgress::Sokoban)
+                            })
+                        }
+                    }),
+                    std::thread::spawn({
+                        let account_config = account_config.clone();
+                        let account = account.clone();
+                        let cancel_flag = Arc::clone(&cancel_flag);
+                        let run_minesweeper = Arc::clone(&run_minesweeper);
+                        let log = log.clone();
+                        let email = account_email.clone();
+                        move || {
+                            run_feature_with_status(&cancel_flag, &log, &email, "自动扫雷", || {
+                                run_minesweeper(&account_config, account.clone(), &cancel_flag)
+                                    .map(FeatureProgress::Minesweeper)
                             })
                         }
                     }),
@@ -258,6 +334,48 @@ pub(crate) fn execute_all_free_features(
                             })
                         }
                     }),
+                    std::thread::spawn({
+                        let account_config = account_config.clone();
+                        let account = account.clone();
+                        let cancel_flag = Arc::clone(&cancel_flag);
+                        let run_maze = Arc::clone(&run_maze);
+                        let log = log.clone();
+                        let email = account_email.clone();
+                        move || {
+                            run_feature_with_status(&cancel_flag, &log, &email, "自动迷宫", || {
+                                run_maze(&account_config, account.clone(), &cancel_flag)
+                                    .map(FeatureProgress::Maze)
+                            })
+                        }
+                    }),
+                    std::thread::spawn({
+                        let account_config = account_config.clone();
+                        let account = account.clone();
+                        let cancel_flag = Arc::clone(&cancel_flag);
+                        let run_lightsout = Arc::clone(&run_lightsout);
+                        let log = log.clone();
+                        let email = account_email.clone();
+                        move || {
+                            run_feature_with_status(&cancel_flag, &log, &email, "自动点灯", || {
+                                run_lightsout(&account_config, account.clone(), &cancel_flag)
+                                    .map(FeatureProgress::Lightsout)
+                            })
+                        }
+                    }),
+                    std::thread::spawn({
+                        let account_config = account_config.clone();
+                        let account = account.clone();
+                        let cancel_flag = Arc::clone(&cancel_flag);
+                        let run_nonogram = Arc::clone(&run_nonogram);
+                        let log = log.clone();
+                        let email = account_email.clone();
+                        move || {
+                            run_feature_with_status(&cancel_flag, &log, &email, "自动数织", || {
+                                run_nonogram(&account_config, account.clone(), &cancel_flag)
+                                    .map(FeatureProgress::Nonogram)
+                            })
+                        }
+                    }),
                 ];
 
                 let mut merged_config = account_config.clone();
@@ -290,6 +408,26 @@ pub(crate) fn execute_all_free_features(
                                 merged_config = upsert_account(merged_config, output.account);
                             }
                             FeatureProgress::Sudoku(output) => {
+                                total_reward += output.total_reward;
+                                merged_config = upsert_account(merged_config, output.account);
+                            }
+                            FeatureProgress::Sokoban(output) => {
+                                total_reward += output.total_reward;
+                                merged_config = upsert_account(merged_config, output.account);
+                            }
+                            FeatureProgress::Minesweeper(output) => {
+                                total_reward += output.total_reward;
+                                merged_config = upsert_account(merged_config, output.account);
+                            }
+                            FeatureProgress::Maze(output) => {
+                                total_reward += output.total_reward;
+                                merged_config = upsert_account(merged_config, output.account);
+                            }
+                            FeatureProgress::Lightsout(output) => {
+                                total_reward += output.total_reward;
+                                merged_config = upsert_account(merged_config, output.account);
+                            }
+                            FeatureProgress::Nonogram(output) => {
                                 total_reward += output.total_reward;
                                 merged_config = upsert_account(merged_config, output.account);
                             }

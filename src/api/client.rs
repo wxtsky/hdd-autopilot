@@ -608,6 +608,350 @@ impl ApiClient {
         )
     }
 
+    pub fn get_sokoban_config(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::SokobanConfigResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::SOKOBAN_CONFIG_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/sokoban"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn get_sokoban_me(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::SokobanMeResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::SOKOBAN_ME_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/sokoban"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn start_sokoban(
+        &self,
+        auth_token: &str,
+        difficulty: &str,
+    ) -> Result<crate::model::SokobanStartResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::SOKOBAN_START_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/sokoban"),
+            Some(&crate::model::SokobanStartRequest {
+                difficulty: difficulty.to_string(),
+            }),
+        )
+    }
+
+    pub fn move_sokoban(
+        &self,
+        auth_token: &str,
+        session_id: i32,
+        direction: &str,
+    ) -> Result<crate::model::SokobanMoveResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::SOKOBAN_MOVE_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/sokoban"),
+            Some(&crate::model::SokobanMoveRequest {
+                session_id,
+                direction: direction.to_string(),
+            }),
+        )
+    }
+
+    pub fn get_minesweeper_config(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::MinesweeperConfigResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::MINESWEEPER_CONFIG_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/minesweeper"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn get_minesweeper_me(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::MinesweeperMeResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::MINESWEEPER_ME_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/minesweeper"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn start_minesweeper(
+        &self,
+        auth_token: &str,
+        difficulty: &str,
+    ) -> Result<crate::model::MinesweeperStartResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::MINESWEEPER_START_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/minesweeper"),
+            Some(&crate::model::MinesweeperStartRequest {
+                difficulty: difficulty.to_string(),
+            }),
+        )
+    }
+
+    pub fn click_minesweeper(
+        &self,
+        auth_token: &str,
+        play_id: i32,
+        action: &str,
+        x: i32,
+        y: i32,
+    ) -> Result<crate::model::MinesweeperClickResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::MINESWEEPER_CLICK_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/minesweeper"),
+            Some(&crate::model::MinesweeperClickRequest {
+                play_id,
+                action: action.to_string(),
+                x,
+                y,
+            }),
+        )
+    }
+
+    pub fn abandon_minesweeper(
+        &self,
+        auth_token: &str,
+        play_id: i32,
+    ) -> Result<crate::model::MinesweeperPlayState, ApiError> {
+        #[derive(serde::Serialize)]
+        struct Body {
+            play_id: i32,
+        }
+        self.get_json(
+            Method::POST,
+            crate::api::MINESWEEPER_ABANDON_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/minesweeper"),
+            Some(&Body { play_id }),
+        )
+    }
+
+    pub fn get_maze_config(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::MazeConfigResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::MAZE_CONFIG_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/maze"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn get_maze_me(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::MazeMeResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::MAZE_ME_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/maze"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn start_maze(
+        &self,
+        auth_token: &str,
+        difficulty: &str,
+    ) -> Result<crate::model::MazeStartResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::MAZE_START_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/maze"),
+            Some(&crate::model::MazeStartRequest {
+                difficulty: difficulty.to_string(),
+            }),
+        )
+    }
+
+    pub fn move_maze(
+        &self,
+        auth_token: &str,
+        session_id: i32,
+        direction: &str,
+    ) -> Result<crate::model::MazeMoveResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::MAZE_MOVE_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/maze"),
+            Some(&crate::model::MazeMoveRequest {
+                session_id,
+                direction: direction.to_string(),
+            }),
+        )
+    }
+
+    pub fn get_lightsout_config(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::LightsoutConfigResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::LIGHTSOUT_CONFIG_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/lightsout"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn get_lightsout_me(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::LightsoutMeResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::LIGHTSOUT_ME_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/lightsout"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn start_lightsout(
+        &self,
+        auth_token: &str,
+        difficulty: &str,
+    ) -> Result<crate::model::LightsoutStartResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::LIGHTSOUT_START_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/lightsout"),
+            Some(&crate::model::LightsoutStartRequest {
+                difficulty: difficulty.to_string(),
+            }),
+        )
+    }
+
+    pub fn click_lightsout(
+        &self,
+        auth_token: &str,
+        session_id: i32,
+        r: i32,
+        c: i32,
+    ) -> Result<crate::model::LightsoutClickResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::LIGHTSOUT_CLICK_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/lightsout"),
+            Some(&crate::model::LightsoutClickRequest { session_id, r, c }),
+        )
+    }
+
+    pub fn get_nonogram_config(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::NonogramConfigResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::NONOGRAM_CONFIG_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/nonogram"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn get_nonogram_me(
+        &self,
+        auth_token: &str,
+    ) -> Result<crate::model::NonogramMeResponse, ApiError> {
+        self.get_json(
+            Method::GET,
+            crate::api::NONOGRAM_ME_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/nonogram"),
+            Option::<&()>::None,
+        )
+    }
+
+    pub fn start_nonogram(
+        &self,
+        auth_token: &str,
+        difficulty: &str,
+    ) -> Result<crate::model::NonogramStartResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::NONOGRAM_START_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/nonogram"),
+            Some(&crate::model::NonogramStartRequest {
+                difficulty: difficulty.to_string(),
+            }),
+        )
+    }
+
+    pub fn click_nonogram(
+        &self,
+        auth_token: &str,
+        session_id: i32,
+        action: &str,
+        r: i32,
+        c: i32,
+    ) -> Result<crate::model::NonogramClickResponse, ApiError> {
+        self.get_json(
+            Method::POST,
+            crate::api::NONOGRAM_CLICK_PATH,
+            auth_token,
+            &(self.base_url.clone() + "/nonogram"),
+            Some(&crate::model::NonogramClickRequest {
+                session_id,
+                action: action.to_string(),
+                r,
+                c,
+            }),
+        )
+    }
+
+    pub fn abandon_simple(
+        &self,
+        auth_token: &str,
+        path: &str,
+        referer_segment: &str,
+        session_id: i32,
+    ) -> Result<serde_json::Value, ApiError> {
+        #[derive(serde::Serialize)]
+        struct Body {
+            session_id: i32,
+        }
+        self.get_json(
+            reqwest::Method::POST,
+            path,
+            auth_token,
+            &(self.base_url.clone() + referer_segment),
+            Some(&Body { session_id }),
+        )
+    }
+
     fn get_json<T: DeserializeOwned, B: serde::Serialize>(
         &self,
         method: Method,
