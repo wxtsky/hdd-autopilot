@@ -5,7 +5,8 @@ use std::thread;
 use std::time::Duration;
 
 use crate::model::{
-    AuthCache, AuthConfig, MINESWEEPER_DIFFICULTY_ORDER, MinesweeperClickResponse,
+    AuthCache, AuthConfig, MINESWEEPER_DIFFICULTY_BEGINNER, MINESWEEPER_DIFFICULTY_EXPERT,
+    MINESWEEPER_DIFFICULTY_INTERMEDIATE, MINESWEEPER_DIFFICULTY_ORDER, MinesweeperClickResponse,
     MinesweeperConfigResponse, MinesweeperPlayState,
 };
 use crate::runtime::resolve_data_file_path;
@@ -208,7 +209,19 @@ fn run_account(
         }
     }
 
-    for difficulty in MINESWEEPER_DIFFICULTY_ORDER.iter() {
+    // 扫雷服务端总配额 max_plays_per_day（一般 100），每次胜利都给 reward。
+    // 策略：用满配额优先打 beginner（CSP solver 在 beginner 胜率最高、风险可控）。
+    // 跑完一遍 beginner 后如配额还有富余，依次试 intermediate / expert（赔率更高）。
+    let total_budget = config.max_plays_per_day as usize;
+    let plan: Vec<(&str, usize)> = vec![
+        // 大头打 beginner：solver 在 beginner 胜率应该最高
+        (MINESWEEPER_DIFFICULTY_BEGINNER, total_budget * 70 / 100),
+        // 剩余尝试 intermediate
+        (MINESWEEPER_DIFFICULTY_INTERMEDIATE, total_budget * 20 / 100),
+        // expert 留少量配额保险
+        (MINESWEEPER_DIFFICULTY_EXPERT, total_budget.saturating_sub(total_budget * 90 / 100)),
+    ];
+    for (difficulty, budget) in &plan {
         ui::check_cancel(cancel_flag)?;
         let reward_per_play = config
             .rewards
@@ -219,54 +232,69 @@ fn run_account(
             Some(c) => c,
             None => continue,
         };
-        // 服务端只给总配额（max_plays_per_day）；按难度尝试一次（每难度第一次 won 才领奖）。
-        // 实际策略：每个难度尝试到第一次成功，最多 5 次（避免无限尝试）。
-        let mut won_this_difficulty = false;
-        let max_attempts = 5;
-        for attempt in 0..max_attempts {
+        if *budget == 0 {
+            continue;
+        }
+        state.lock().unwrap().log.line_fmt(format_args!(
+            "账号 {} 扫雷{}难度计划跑 {} 局（每胜 {}）。",
+            runtime.email(),
+            difficulty,
+            budget,
+            format_amount(reward_per_play),
+        ));
+        let mut wins_this = 0;
+        for attempt in 0..*budget {
             ui::check_cancel(cancel_flag)?;
-            if play_count_today >= config.max_plays_per_day as usize {
+            if play_count_today >= total_budget {
                 break;
             }
-            state.lock().unwrap().log.line_fmt(format_args!(
-                "账号 {} 开始扫雷{}难度第 {} 次尝试（每局奖励 {}）。",
-                runtime.email(),
-                difficulty,
-                attempt + 1,
-                format_amount(reward_per_play),
-            ));
-            let start = with_auth_retry_api_until_success(
+            let start = match with_auth_retry_api_until_success(
                 cancel_flag,
                 state,
                 runtime,
                 "minesweeper start",
                 |client, auth_token| client.start_minesweeper(auth_token, difficulty),
-            )?;
+            ) {
+                Ok(s) => s,
+                Err(error) => {
+                    // 配额耗尽或别的问题就跳出
+                    state.lock().unwrap().log.line_fmt(format_args!(
+                        "账号 {} 扫雷{}起局失败（{}），停止该难度。",
+                        runtime.email(),
+                        difficulty,
+                        error
+                    ));
+                    break;
+                }
+            };
             play_count_today += 1;
             let result = play_one_round(cancel_flag, state, runtime, start, dcfg.rows, dcfg.cols, dcfg.mines, interval)?;
             total_reward += result.reward;
             bump(&mut summaries, runtime.email(), &result);
-            state.lock().unwrap().log.line_fmt(format_args!(
-                "账号 {} 扫雷{}难度第 {} 次：{}（奖励 {}）",
-                runtime.email(),
-                difficulty,
-                attempt + 1,
-                if result.won { "通关" } else { "踩雷" },
-                format_amount(result.reward),
-            ));
             if result.won {
-                won_this_difficulty = true;
-                break;
+                wins_this += 1;
+            }
+            // 每 10 局汇报一次
+            if (attempt + 1) % 10 == 0 || attempt + 1 == *budget {
+                state.lock().unwrap().log.line_fmt(format_args!(
+                    "账号 {} 扫雷{}已跑 {}/{}：胜 {} 累计奖励 {}",
+                    runtime.email(),
+                    difficulty,
+                    attempt + 1,
+                    budget,
+                    wins_this,
+                    format_amount(wins_this as f64 * reward_per_play),
+                ));
             }
         }
-        if !won_this_difficulty {
-            state.lock().unwrap().log.line_fmt(format_args!(
-                "账号 {} 扫雷{}难度 {} 次都没通关，跳过。",
-                runtime.email(),
-                difficulty,
-                max_attempts,
-            ));
-        }
+        state.lock().unwrap().log.line_fmt(format_args!(
+            "账号 {} 扫雷{}本难度跑完：{} / {} 胜，本难度累计奖励 {}",
+            runtime.email(),
+            difficulty,
+            wins_this,
+            budget,
+            format_amount(wins_this as f64 * reward_per_play),
+        ));
     }
 
     state.lock().unwrap().log.line_fmt(format_args!(
@@ -308,6 +336,7 @@ fn play_one_round(
     let mut last_reward = start.reward_amount;
 
     if first_click.is_none() {
+        // hdd 用 flood fill 模式：中心点击展开范围最大（8 邻居 → 信息最多）
         let cx = cols / 2;
         let cy = rows / 2;
         let resp = match click(
@@ -384,25 +413,30 @@ fn play_one_round(
                 },
             });
         }
+        // flag 全部本地标记（不发请求），收集 reveal action 列表
+        let mut reveal_targets: Vec<(i32, i32)> = Vec::new();
         for action in actions {
+            match action {
+                MineAction::Flag { x, y } => board.set_flag(x, y),
+                MineAction::Reveal { x, y } => reveal_targets.push((x, y)),
+            }
+        }
+        if reveal_targets.is_empty() {
+            // 只有 flag 没 reveal — 继续 next_actions 应该会推出 reveal
+            continue;
+        }
+        // 每次只 reveal 1 个，发送前先确认还是 Unknown（避免 flood fill 后重复 reveal → 400）
+        let mut sent = false;
+        for (x, y) in reveal_targets {
             ui::check_cancel(cancel_flag)?;
-            // flag 仅本地标记，不发请求（服务端胜利判定只看 reveal）
-            let (x, y) = match action {
-                MineAction::Flag { x, y } => {
-                    board.set_flag(x, y);
-                    continue;
-                }
-                MineAction::Reveal { x, y } => (x, y),
-            };
+            if !matches!(
+                board.cell(x, y),
+                crate::solver::minesweeper::Cell::Unknown
+            ) {
+                continue;
+            }
             let resp = match click(
-                cancel_flag,
-                state,
-                runtime,
-                play_id,
-                "reveal",
-                x,
-                y,
-                interval,
+                cancel_flag, state, runtime, play_id, "reveal", x, y, interval,
             ) {
                 Ok(r) => r,
                 Err(error) => {
@@ -429,6 +463,7 @@ fn play_one_round(
                 }
             };
             clicks += 1;
+            sent = true;
             apply_click_response(&mut board, &resp);
             last_resolution = resp.state.resolution.clone();
             last_reward = resp.state.reward_amount;
@@ -439,20 +474,37 @@ fn play_one_round(
                     reward: 0.0,
                 });
             }
-            if last_resolution == "won" {
-                return Ok(RoundResult {
-                    difficulty,
-                    won: true,
-                    reward: last_reward,
-                });
-            }
-            if last_resolution == "lost" {
-                return Ok(RoundResult {
-                    difficulty,
-                    won: false,
-                    reward: 0.0,
-                });
-            }
+            // 一次只发一个 reveal，让外层 while 重新 next_actions
+            break;
+        }
+        if !sent {
+            // 全部 reveal 目标都已经不是 Unknown — 异常，abandon
+            let _ = with_auth_retry_api_until_success(
+                cancel_flag,
+                state,
+                runtime,
+                "minesweeper abandon",
+                |client, auth_token| client.abandon_minesweeper(auth_token, play_id),
+            );
+            return Ok(RoundResult {
+                difficulty,
+                won: false,
+                reward: 0.0,
+            });
+        }
+        if last_resolution == "won" {
+            return Ok(RoundResult {
+                difficulty,
+                won: true,
+                reward: last_reward,
+            });
+        }
+        if last_resolution == "lost" {
+            return Ok(RoundResult {
+                difficulty,
+                won: false,
+                reward: 0.0,
+            });
         }
     }
     Ok(RoundResult {
